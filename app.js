@@ -302,11 +302,22 @@ function renderCalendar() {
     html += `<div class="cal-cell-num">${realDate.getDate()}</div>`;
 
     if (daySchedules.length > 0) {
-      html += '<div class="cal-chips">';
+      html += '<div class="cal-sessions">';
       daySchedules.forEach(s => {
         const cls = s.time.toLowerCase();
-        const lead = s.lead || '...';
-        html += `<div class="cal-chip ${cls}">${esc(lead)}</div>`;
+        const past = isPastSession(dk, s.time) ? ' past' : '';
+        const leadInit = s.lead ? s.lead[0].toUpperCase() : '?';
+        const supportNames = s.support ? s.support.split(',').map(x => x.trim()).filter(Boolean) : [];
+        html += `<div class="cal-session ${cls}${past}">`;
+        html += `<span class="session-shift-dot"></span>`;
+        html += `<span class="session-circle lead" title="${esc(s.lead || 'Unassigned')}">${esc(leadInit)}</span>`;
+        supportNames.forEach(name => {
+          html += `<span class="session-circle support" title="${esc(name)}">${esc(name[0].toUpperCase())}</span>`;
+        });
+        if (supportNames.length === 0) {
+          html += `<span class="session-circle support empty" title="No support">?</span>`;
+        }
+        html += '</div>';
       });
       html += '</div>';
       html += '<div class="cal-dots">';
@@ -352,9 +363,11 @@ function renderToday() {
     const support = sched?.support || '';
     const cls = shift.key.toLowerCase();
 
+    const supportNames = support ? support.split(',').map(x => x.trim()).filter(Boolean) : [];
+
     let yourRole = '';
     if (lead.toUpperCase() === currentUser.toUpperCase()) yourRole = 'Lead';
-    else if (support.toUpperCase() === currentUser.toUpperCase()) yourRole = 'Support';
+    else if (supportNames.some(n => n.toUpperCase() === currentUser.toUpperCase())) yourRole = 'Support';
 
     return `<div class="today-card">
       <div class="today-card-header">
@@ -371,7 +384,7 @@ function renderToday() {
         </div>
         <div class="assign-block">
           <div class="assign-label">Support</div>
-          <div class="assign-value ${support ? '' : 'empty'}">${esc(support) || 'Not assigned'}</div>
+          <div class="assign-value ${support ? '' : 'empty'}">${supportNames.length ? supportNames.map(n => esc(n)).join(', ') : 'Not assigned'}</div>
         </div>
       </div>
       ${yourRole ? `<div class="your-role-banner">
@@ -453,6 +466,8 @@ function openDayModal(dk) {
     const currentLead = sched?.lead || '';
     const currentSupport = sched?.support || '';
 
+    const currentSupports = currentSupport ? currentSupport.split(',').map(x => x.trim()) : [];
+
     return `<div class="shift-section ${cls}">
       <div class="shift-section-header">
         <span class="shift-section-title" style="color:var(--${cls})">${shift.label}</span>
@@ -465,18 +480,26 @@ function openDayModal(dk) {
           ${leads.map(name => `<option value="${esc(name)}" ${currentLead === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}
         </select>
       </div>
-      <div class="assign-row">
-        <span class="assign-row-label">Support</span>
-        <select class="input select" data-date="${dk}" data-shift="${shift.key}" data-role="support" style="flex:1">
-          <option value="">— Select —</option>
-          ${supports.map(name => `<option value="${esc(name)}" ${currentSupport === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}
-        </select>
+      <div class="assign-row" style="align-items:flex-start">
+        <span class="assign-row-label" style="padding-top:4px">Support</span>
+        <div class="support-checks" data-date="${dk}" data-shift="${shift.key}" style="flex:1">
+          ${supports.map(name => `<label class="support-check-label">
+            <input type="checkbox" value="${esc(name)}" ${currentSupports.includes(name) ? 'checked' : ''}>
+            <span>${esc(name)}</span>
+          </label>`).join('')}
+        </div>
       </div>
     </div>`;
   }).join('');
 
-  body.querySelectorAll('select').forEach(sel => {
+  body.querySelectorAll('select[data-role="lead"]').forEach(sel => {
     sel.addEventListener('change', () => saveShiftAssignment(sel));
+  });
+  body.querySelectorAll('.support-checks input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const container = cb.closest('.support-checks');
+      saveSupportAssignment(container);
+    });
   });
 
   overlay.classList.add('open');
@@ -527,10 +550,11 @@ async function removeMember(row) {
 async function saveShiftAssignment(sel) {
   const dk = sel.dataset.date;
   const shift = sel.dataset.shift;
-  const role = sel.dataset.role;
 
-  const otherRole = role === 'lead' ? 'support' : 'lead';
-  const otherSel = document.querySelector(`select[data-date="${dk}"][data-shift="${shift}"][data-role="${otherRole}"]`);
+  const supportContainer = document.querySelector(`.support-checks[data-date="${dk}"][data-shift="${shift}"]`);
+  const checkedSupports = supportContainer
+    ? [...supportContainer.querySelectorAll('input:checked')].map(cb => cb.value).join(', ')
+    : '';
 
   showLoading();
   try {
@@ -538,8 +562,32 @@ async function saveShiftAssignment(sel) {
       action: 'saveSchedule',
       date: dk,
       time: shift,
-      lead: role === 'lead' ? sel.value : (otherSel?.value || ''),
-      support: role === 'support' ? sel.value : (otherSel?.value || ''),
+      lead: sel.value,
+      support: checkedSupports,
+    });
+    await fetchAll();
+    showToast('Schedule updated');
+  } catch (e) {
+    showToast('Failed to save');
+  }
+  hideLoading();
+}
+
+async function saveSupportAssignment(container) {
+  const dk = container.dataset.date;
+  const shift = container.dataset.shift;
+
+  const leadSel = document.querySelector(`select[data-date="${dk}"][data-shift="${shift}"][data-role="lead"]`);
+  const checkedSupports = [...container.querySelectorAll('input:checked')].map(cb => cb.value).join(', ');
+
+  showLoading();
+  try {
+    await apiPost({
+      action: 'saveSchedule',
+      date: dk,
+      time: shift,
+      lead: leadSel?.value || '',
+      support: checkedSupports,
     });
     await fetchAll();
     showToast('Schedule updated');
@@ -572,8 +620,9 @@ function scheduleReminders() {
   const daySchedules = getSchedulesForDate(dk);
 
   daySchedules.forEach(sched => {
+    const supList = sched.support ? sched.support.split(',').map(x => x.trim()) : [];
     if (sched.lead.toUpperCase() !== currentUser.toUpperCase() &&
-        sched.support.toUpperCase() !== currentUser.toUpperCase()) return;
+        !supList.some(n => n.toUpperCase() === currentUser.toUpperCase())) return;
 
     const shift = SHIFTS.find(s => s.key === sched.time);
     if (!shift) return;
@@ -601,10 +650,37 @@ function scheduleReminders() {
 
 // ── Helpers ──
 function getSchedulesForDate(dk) {
-  return schedules.filter(s => {
+  const all = schedules.filter(s => {
     const sDate = s.date instanceof Date ? dateKey(s.date) : normalizeDate(s.date);
     return sDate === dk;
   });
+  const merged = {};
+  all.forEach(s => {
+    const key = s.time;
+    if (!merged[key]) {
+      merged[key] = { ...s };
+    } else {
+      if (s.lead && !merged[key].lead) merged[key].lead = s.lead;
+      if (s.support && !merged[key].support) merged[key].support = s.support;
+      else if (s.support && merged[key].support) {
+        const existing = merged[key].support.split(',').map(x => x.trim()).filter(Boolean);
+        const incoming = s.support.split(',').map(x => x.trim()).filter(Boolean);
+        const combined = [...new Set([...existing, ...incoming])];
+        merged[key].support = combined.join(', ');
+      }
+    }
+  });
+  return SHIFTS.map(sh => merged[sh.key]).filter(Boolean);
+}
+
+function isPastSession(dk, shiftKey) {
+  const today = dateKey(new Date());
+  if (dk < today) return true;
+  if (dk > today) return false;
+  const time = shiftTimes[shiftKey] || SHIFTS.find(s => s.key === shiftKey)?.defaultTime || '23:59';
+  const [h, m] = time.split(':').map(Number);
+  const now = new Date();
+  return now.getHours() > h || (now.getHours() === h && now.getMinutes() >= m);
 }
 
 function normalizeDate(str) {

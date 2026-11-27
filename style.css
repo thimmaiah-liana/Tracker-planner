@@ -378,8 +378,8 @@ body {
 }
 .cal-cell {
   background: var(--bg-card);
-  min-height: 90px;
-  padding: 8px;
+  min-height: 110px;
+  padding: 8px 6px;
   cursor: pointer;
   transition: background var(--transition);
   position: relative;
@@ -406,24 +406,53 @@ body {
   font-size: 11px;
   font-weight: 600;
 }
-.cal-chips {
+/* Session rows in calendar cells */
+.cal-sessions {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
-.cal-chip {
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 5px;
-  border-radius: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.4;
+.cal-session {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 0;
 }
-.cal-chip.morning { background: var(--morning-bg); color: var(--morning); }
-.cal-chip.midday { background: var(--midday-bg); color: var(--midday); }
-.cal-chip.evening { background: var(--evening-bg); color: var(--evening); }
+.cal-session.past {
+  opacity: 0.45;
+}
+.cal-session.past .session-circle {
+  text-decoration: line-through;
+}
+.session-shift-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.cal-session.morning .session-shift-dot { background: var(--morning); }
+.cal-session.midday .session-shift-dot { background: var(--midday); }
+.cal-session.evening .session-shift-dot { background: var(--evening); }
+.session-circle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+.session-circle.lead { background: var(--accent); }
+.cal-session.morning .session-circle.support { background: var(--morning); }
+.cal-session.midday .session-circle.support { background: var(--midday); }
+.cal-session.evening .session-circle.support { background: var(--evening); }
+.session-circle.empty {
+  background: var(--fg-tertiary);
+  opacity: 0.5;
+}
 
 /* Mobile dots fallback */
 .cal-dots {
@@ -603,6 +632,30 @@ body {
   width: 55px;
   flex-shrink: 0;
 }
+/* Support multi-select checkboxes */
+.support-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.support-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.support-check-label:hover { background: var(--bg-hover); }
+.support-check-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
 .input {
   padding: 7px 10px;
   border: 1px solid var(--border);
@@ -804,7 +857,7 @@ body {
   .page { padding: 20px 16px 40px; }
   .loading-bar { left: 0; }
   .cal-cell { min-height: 56px; padding: 4px; }
-  .cal-chips { display: none; }
+  .cal-sessions { display: none; }
   .cal-dots { display: flex; }
   .cal-cell-num { font-size: 11px; }
   .assign-grid { grid-template-columns: 1fr; }

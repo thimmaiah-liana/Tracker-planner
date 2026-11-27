@@ -127,19 +127,21 @@ function saveSchedule(data) {
   const sheet = ss.getSheetByName('SCHEDULE');
   const allData = sheet.getDataRange().getValues();
 
-  let existingRow = -1;
-  for (let i = 1; i < allData.length; i++) {
-    const rowDate = allData[i][0] instanceof Date ? formatDate(allData[i][0]) : (allData[i][0] || '').toString();
+  var matchingRows = [];
+  for (var i = 1; i < allData.length; i++) {
+    var rowDate = allData[i][0] instanceof Date ? formatDate(allData[i][0]) : (allData[i][0] || '').toString();
     if (rowDate === data.date && allData[i][1] === data.time) {
-      existingRow = i + 1;
-      break;
+      matchingRows.push(i + 1);
     }
   }
 
-  const rowData = [data.date, data.time, data.lead, data.support];
+  var rowData = [data.date, data.time, data.lead || '', data.support || ''];
 
-  if (existingRow > 0) {
-    sheet.getRange(existingRow, 1, 1, 4).setValues([rowData]);
+  if (matchingRows.length > 0) {
+    sheet.getRange(matchingRows[0], 1, 1, 4).setValues([rowData]);
+    for (var j = matchingRows.length - 1; j >= 1; j--) {
+      sheet.deleteRow(matchingRows[j]);
+    }
   } else {
     sheet.appendRow(rowData);
   }
