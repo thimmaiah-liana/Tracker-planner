@@ -419,10 +419,17 @@ body {
   padding: 2px 0;
 }
 .cal-session.past {
-  opacity: 0.45;
+  opacity: 0.5;
+  position: relative;
 }
-.cal-session.past .session-circle {
-  text-decoration: line-through;
+.cal-session.past::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  background: var(--fg-tertiary);
 }
 .session-shift-dot {
   width: 4px;
