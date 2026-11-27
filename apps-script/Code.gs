@@ -44,6 +44,9 @@ function doPost(e) {
       case 'removePerson':
         result = removePerson(data.role, data.row);
         break;
+      case 'removePersonByName':
+        result = removePersonByName(data.role, data.name);
+        break;
       case 'saveSchedule':
         result = saveSchedule(data);
         break;
@@ -122,6 +125,25 @@ function removePerson(role, row) {
     sheet.deleteRow(row);
   }
   return { success: true };
+}
+
+function removePersonByName(role, name) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName('TEAM');
+  const col = role === 'lead' ? 1 : 2;
+  const data = sheet.getDataRange().getValues();
+  for (var i = data.length - 1; i >= 1; i--) {
+    if ((data[i][col - 1] || '').toString().toUpperCase() === name.toUpperCase()) {
+      sheet.getRange(i + 1, col).clearContent();
+      if (!data[i][0] && !data[i][1] || (col === 1 && !data[i][1]) || (col === 2 && !data[i][0])) {
+        // Check if entire row is now empty
+        var updated = sheet.getRange(i + 1, 1, 1, 2).getValues()[0];
+        if (!updated[0] && !updated[1]) sheet.deleteRow(i + 1);
+      }
+      return { success: true };
+    }
+  }
+  return { error: 'Not found' };
 }
 
 // ── SCHEDULE tab: columns A=DATE, B=TIME, C=LEAD, D=SUPPORT ──

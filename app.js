@@ -40,24 +40,18 @@ function init() {
   setupMobileMenu();
   setupModal();
 
-  if (apiUrl) {
-    fetchAll();
-  } else {
-    showPage('settings');
-    showToast('Set your Apps Script URL in Settings to get started');
-  }
+  history.replaceState({ page: 'calendar' }, '', '#calendar');
+
+  fetchAll();
 }
 
 function loadLocalSettings() {
   try {
-    apiUrl = localStorage.getItem('tp_api_url') || DEFAULT_API_URL;
+    apiUrl = DEFAULT_API_URL;
     currentUser = localStorage.getItem('tp_username') || '';
     const saved = localStorage.getItem('tp_shift_times');
     if (saved) shiftTimes = JSON.parse(saved);
   } catch (e) {}
-
-  const urlInput = document.getElementById('api-url');
-  if (urlInput && apiUrl) urlInput.value = apiUrl;
 }
 
 function showNamePrompt() {
@@ -120,7 +114,6 @@ function setupNavigation() {
   document.getElementById('add-lead-btn').addEventListener('click', () => addPerson('lead'));
   document.getElementById('add-support-btn').addEventListener('click', () => addPerson('support'));
   document.getElementById('save-times-btn').addEventListener('click', saveTimes);
-  document.getElementById('save-api-btn').addEventListener('click', saveApiUrl);
 
   document.getElementById('new-lead').addEventListener('keydown', e => {
     if (e.key === 'Enter') addPerson('lead');
@@ -153,34 +146,58 @@ function setupMobileMenu() {
   });
 }
 
-function showPage(page) {
+let pageHistory = ['calendar'];
+
+function showPage(page, pushState = true) {
   currentPage = page;
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
   document.getElementById('page-' + page).style.display = 'block';
+
+  if (pushState) {
+    if (pageHistory[pageHistory.length - 1] !== page) {
+      pageHistory.push(page);
+    }
+    history.pushState({ page }, '', '#' + page);
+  }
 
   if (page === 'calendar') renderCalendar();
   if (page === 'today') renderToday();
   if (page === 'settings') renderSettings();
 }
 
-// ── API ──
-function saveApiUrl() {
-  const input = document.getElementById('api-url');
-  apiUrl = input.value.trim();
-  try { localStorage.setItem('tp_api_url', apiUrl); } catch (e) {}
+let backCount = 0;
+let backTimer = null;
 
-  if (apiUrl) {
-    document.getElementById('api-status').textContent = 'Testing connection...';
-    fetchAll().then(() => {
-      document.getElementById('api-status').textContent = 'Connected successfully!';
-      document.getElementById('api-status').style.color = 'var(--accent)';
-    }).catch(() => {
-      document.getElementById('api-status').textContent = 'Connection failed. Check the URL.';
-      document.getElementById('api-status').style.color = 'var(--danger)';
-    });
+window.addEventListener('popstate', (e) => {
+  if (e.state?.page) {
+    pageHistory.pop();
+    showPage(e.state.page, false);
+    backCount = 0;
+    return;
   }
-}
+
+  if (pageHistory.length > 1) {
+    pageHistory.pop();
+    const prev = pageHistory[pageHistory.length - 1];
+    showPage(prev, false);
+    history.pushState({ page: prev }, '', '#' + prev);
+    backCount = 0;
+  } else {
+    backCount++;
+    if (backCount >= 2) {
+      window.close();
+      history.back();
+    } else {
+      history.pushState({ page: currentPage }, '', '#' + currentPage);
+      showToast('Press back again to exit');
+      clearTimeout(backTimer);
+      backTimer = setTimeout(() => { backCount = 0; }, 2000);
+    }
+  }
+});
+
+// ── API ──
 
 let loadingBar;
 function showLoading() {
@@ -418,7 +435,8 @@ function renderPersonList(containerId, names, listData, role) {
   }
 
   list.innerHTML = names.map((name, i) => {
-    const row = listData.length ? listData[i]?.row : null;
+    const entry = listData.find(e => e.name === name);
+    const row = entry?.row || null;
     return `<div class="member-row">
       <div class="member-info">
         <div class="member-initials" style="background:${MEMBER_COLORS[i % MEMBER_COLORS.length]}">${getInitials(name)}</div>
@@ -426,15 +444,20 @@ function renderPersonList(containerId, names, listData, role) {
           <div class="member-name">${esc(name)}</div>
         </div>
       </div>
-      ${row ? `<button class="remove-btn" data-row="${row}" data-role="${role}" title="Remove">&times;</button>` : ''}
+      <button class="remove-btn" data-name="${esc(name)}" ${row ? `data-row="${row}"` : ''} data-role="${role}" title="Remove">&times;</button>
     </div>`;
   }).join('');
 
   list.querySelectorAll('.remove-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const row = parseInt(btn.dataset.row);
+      const row = btn.dataset.row ? parseInt(btn.dataset.row) : null;
       const r = btn.dataset.role;
-      await removePerson(row, r);
+      const name = btn.dataset.name;
+      if (row) {
+        await removePerson(row, r);
+      } else {
+        await removePersonByName(name, r);
+      }
     });
   });
 }
@@ -537,6 +560,18 @@ async function removePerson(row, role) {
   showLoading();
   try {
     await apiPost({ action: 'removePerson', role, row });
+    await fetchAll();
+    showToast('Removed');
+  } catch (e) {
+    showToast('Failed to remove');
+  }
+  hideLoading();
+}
+
+async function removePersonByName(name, role) {
+  showLoading();
+  try {
+    await apiPost({ action: 'removePersonByName', role, name });
     await fetchAll();
     showToast('Removed');
   } catch (e) {
