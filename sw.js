@@ -1,4 +1,4 @@
-const CACHE = 'tp-v2';
+const CACHE = 'tp-v3';
 const ASSETS = [
   './',
   './index.html',
