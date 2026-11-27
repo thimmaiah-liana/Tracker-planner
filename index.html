@@ -105,14 +105,23 @@
         </div>
 
         <div class="settings-section">
-          <h2>Team Members</h2>
-          <p class="hint">Add field team lead/support pairs. Each row in the sheet is one pair.</p>
-          <div class="add-member-form" id="add-member-form">
-            <input type="text" id="new-lead" placeholder="Lead name" class="input">
-            <input type="text" id="new-support" placeholder="Support name" class="input">
-            <button class="btn-primary" id="add-member-btn">Add</button>
+          <h2>Leads</h2>
+          <p class="hint">People who can be assigned as field visit lead.</p>
+          <div class="add-member-form" id="add-lead-form">
+            <input type="text" id="new-lead" placeholder="Lead name" class="input" style="flex:1">
+            <button class="btn-primary" id="add-lead-btn">Add</button>
           </div>
-          <div class="member-list" id="member-list"></div>
+          <div class="member-list" id="lead-list"></div>
+        </div>
+
+        <div class="settings-section">
+          <h2>Supports</h2>
+          <p class="hint">People who can be assigned as field visit support.</p>
+          <div class="add-member-form" id="add-support-form">
+            <input type="text" id="new-support" placeholder="Support name" class="input" style="flex:1">
+            <button class="btn-primary" id="add-support-btn">Add</button>
+          </div>
+          <div class="member-list" id="support-list"></div>
         </div>
 
         <div class="settings-section">
@@ -133,15 +142,6 @@
             </div>
           </div>
           <button class="btn-primary" id="save-times-btn" style="margin-top:12px">Save Times</button>
-        </div>
-
-        <div class="settings-section">
-          <h2>Google Sheet</h2>
-          <p class="hint">Your data is stored in a Google Sheet for easy access and backup.</p>
-          <a href="https://docs.google.com/spreadsheets/d/1Js4xwYQUQ_M8ti5upLr_v-2cneBDDiNJ7sFw5YefkgA/edit" target="_blank" rel="noopener" class="btn-ghost sheet-link">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-            Open Sheet
-          </a>
         </div>
 
         <div class="settings-section">

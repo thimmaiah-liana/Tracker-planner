@@ -14,6 +14,8 @@ const MEMBER_COLORS = ['#1a7a3a','#d97706','#4f46e5','#dc2626','#059669','#9333e
 const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbz8YHy-ZQYlvGnejarCyJdCmrZU29eb1atynUlS1xJdRoDyQa_pxyzuA17Wy1S15DDRpg/exec';
 let apiUrl = '';
 let teamPairs = [];
+let leadsList = [];
+let supportsList = [];
 let schedules = [];
 let viewYear, viewMonth;
 let currentUser = '';
@@ -115,15 +117,16 @@ function setupNavigation() {
     renderCalendar();
   });
 
-  document.getElementById('add-member-btn').addEventListener('click', addMember);
+  document.getElementById('add-lead-btn').addEventListener('click', () => addPerson('lead'));
+  document.getElementById('add-support-btn').addEventListener('click', () => addPerson('support'));
   document.getElementById('save-times-btn').addEventListener('click', saveTimes);
   document.getElementById('save-api-btn').addEventListener('click', saveApiUrl);
 
   document.getElementById('new-lead').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('new-support').focus();
+    if (e.key === 'Enter') addPerson('lead');
   });
   document.getElementById('new-support').addEventListener('keydown', e => {
-    if (e.key === 'Enter') addMember();
+    if (e.key === 'Enter') addPerson('support');
   });
 }
 
@@ -225,6 +228,8 @@ async function fetchAll() {
     ]);
 
     if (teamRes?.members) teamPairs = teamRes.members;
+    if (teamRes?.leads) leadsList = teamRes.leads;
+    if (teamRes?.supports) supportsList = teamRes.supports;
     if (schedRes?.schedule) schedules = schedRes.schedule;
 
     applyTimes();
@@ -248,10 +253,12 @@ function applyTimes() {
 }
 
 function getLeads() {
+  if (leadsList.length) return leadsList.map(l => l.name);
   return [...new Set(teamPairs.map(p => p.lead).filter(Boolean))];
 }
 
 function getSupports() {
+  if (supportsList.length) return supportsList.map(s => s.name);
   return [...new Set(teamPairs.map(p => p.support).filter(Boolean))];
 }
 
@@ -397,38 +404,37 @@ function renderToday() {
 
 // ── Settings ──
 function renderSettings() {
-  const list = document.getElementById('member-list');
+  renderPersonList('lead-list', getLeads(), leadsList, 'lead');
+  renderPersonList('support-list', getSupports(), supportsList, 'support');
+}
+
+function renderPersonList(containerId, names, listData, role) {
+  const list = document.getElementById(containerId);
   if (!list) return;
 
-  if (teamPairs.length === 0) {
-    list.innerHTML = '<div class="empty-state">No team members yet. Add your first lead/support pair above.</div>';
+  if (names.length === 0) {
+    list.innerHTML = `<div class="empty-state">No ${role}s yet.</div>`;
     return;
   }
 
-  list.innerHTML = teamPairs.map((p, i) => {
+  list.innerHTML = names.map((name, i) => {
+    const row = listData.length ? listData[i]?.row : null;
     return `<div class="member-row">
       <div class="member-info">
-        <div class="member-initials" style="background:${MEMBER_COLORS[i % MEMBER_COLORS.length]}">${getInitials(p.lead)}</div>
+        <div class="member-initials" style="background:${MEMBER_COLORS[i % MEMBER_COLORS.length]}">${getInitials(name)}</div>
         <div class="member-details">
-          <div class="member-name">${esc(p.lead)}</div>
-          <div class="member-email">Lead</div>
+          <div class="member-name">${esc(name)}</div>
         </div>
       </div>
-      <div class="member-info" style="margin-left:auto;margin-right:12px">
-        <div class="member-initials" style="background:${MEMBER_COLORS[(i + 4) % MEMBER_COLORS.length]}">${getInitials(p.support)}</div>
-        <div class="member-details">
-          <div class="member-name">${esc(p.support)}</div>
-          <div class="member-email">Support</div>
-        </div>
-      </div>
-      <button class="remove-btn" data-row="${p.row}" title="Remove">&times;</button>
+      ${row ? `<button class="remove-btn" data-row="${row}" data-role="${role}" title="Remove">&times;</button>` : ''}
     </div>`;
   }).join('');
 
   list.querySelectorAll('.remove-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const row = parseInt(btn.dataset.row);
-      await removeMember(row);
+      const r = btn.dataset.role;
+      await removePerson(row, r);
     });
   });
 }
@@ -510,39 +516,31 @@ function closeModal() {
 }
 
 // ── Data operations ──
-async function addMember() {
-  const leadInput = document.getElementById('new-lead');
-  const supportInput = document.getElementById('new-support');
-
-  const lead = leadInput.value.trim();
-  const support = supportInput.value.trim();
-  if (!lead && !support) { leadInput.focus(); return; }
+async function addPerson(role) {
+  const input = document.getElementById(role === 'lead' ? 'new-lead' : 'new-support');
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
 
   showLoading();
   try {
-    await apiPost({
-      action: 'addTeamMember',
-      lead,
-      support,
-    });
-    leadInput.value = '';
-    supportInput.value = '';
+    await apiPost({ action: 'addPerson', role, name });
+    input.value = '';
     await fetchAll();
-    showToast('Team member added');
+    showToast(`${role === 'lead' ? 'Lead' : 'Support'} added`);
   } catch (e) {
-    showToast('Failed to add member');
+    showToast('Failed to add');
   }
   hideLoading();
 }
 
-async function removeMember(row) {
+async function removePerson(row, role) {
   showLoading();
   try {
-    await apiPost({ action: 'removeTeamMember', row });
+    await apiPost({ action: 'removePerson', role, row });
     await fetchAll();
-    showToast('Member removed');
+    showToast('Removed');
   } catch (e) {
-    showToast('Failed to remove member');
+    showToast('Failed to remove');
   }
   hideLoading();
 }

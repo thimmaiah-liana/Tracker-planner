@@ -38,6 +38,12 @@ function doPost(e) {
       case 'removeTeamMember':
         result = removeTeamMember(data.row);
         break;
+      case 'addPerson':
+        result = addPerson(data.role, data.name);
+        break;
+      case 'removePerson':
+        result = removePerson(data.role, data.row);
+        break;
       case 'saveSchedule':
         result = saveSchedule(data);
         break;
@@ -59,6 +65,8 @@ function getTeam() {
   const sheet = ss.getSheetByName('TEAM');
   const data = sheet.getDataRange().getValues();
   const members = [];
+  const leads = [];
+  const supports = [];
 
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] || data[i][1]) {
@@ -68,8 +76,10 @@ function getTeam() {
         support: data[i][1] || ''
       });
     }
+    if (data[i][0]) leads.push({ row: i + 1, name: data[i][0].toString() });
+    if (data[i][1]) supports.push({ row: i + 1, name: data[i][1].toString() });
   }
-  return { members };
+  return { members, leads, supports };
 }
 
 function addTeamMember(data) {
@@ -83,6 +93,34 @@ function removeTeamMember(row) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
   const sheet = ss.getSheetByName('TEAM');
   sheet.deleteRow(row);
+  return { success: true };
+}
+
+function addPerson(role, name) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName('TEAM');
+  const col = role === 'lead' ? 1 : 2;
+  const data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (!data[i][col - 1]) {
+      sheet.getRange(i + 1, col).setValue(name);
+      return { success: true };
+    }
+  }
+  var newRow = data.length + 1;
+  sheet.getRange(newRow, col).setValue(name);
+  return { success: true };
+}
+
+function removePerson(role, row) {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  const sheet = ss.getSheetByName('TEAM');
+  const col = role === 'lead' ? 1 : 2;
+  sheet.getRange(row, col).clearContent();
+  var data = sheet.getDataRange().getValues();
+  if (row <= data.length && !data[row - 1][0] && !data[row - 1][1]) {
+    sheet.deleteRow(row);
+  }
   return { success: true };
 }
 
