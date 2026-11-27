@@ -606,6 +606,11 @@ function saveTimes() {
 }
 
 // ── Notifications ──
+const REMINDER_OFFSETS = [
+  { minutes: 120, label: '2 hours' },
+  { minutes: 30, label: '30 minutes' },
+];
+
 function scheduleReminders() {
   if (!('Notification' in window)) return;
 
@@ -621,8 +626,10 @@ function scheduleReminders() {
 
   daySchedules.forEach(sched => {
     const supList = sched.support ? sched.support.split(',').map(x => x.trim()) : [];
-    if (sched.lead.toUpperCase() !== currentUser.toUpperCase() &&
-        !supList.some(n => n.toUpperCase() === currentUser.toUpperCase())) return;
+    const userUpper = currentUser.toUpperCase();
+    const isLead = sched.lead.toUpperCase() === userUpper;
+    const isSupport = supList.some(n => n.toUpperCase() === userUpper);
+    if (!isLead && !isSupport) return;
 
     const shift = SHIFTS.find(s => s.key === sched.time);
     if (!shift) return;
@@ -631,20 +638,27 @@ function scheduleReminders() {
     const shiftDate = new Date();
     shiftDate.setHours(h, m, 0, 0);
 
-    const reminderTime = new Date(shiftDate.getTime() - 30 * 60 * 1000);
-    const msUntil = reminderTime.getTime() - Date.now();
+    const role = isLead ? 'Lead' : 'Support';
+    const partner = isLead
+      ? (supList.length ? 'with ' + supList.join(', ') : '')
+      : 'with ' + sched.lead;
 
-    if (msUntil > 0 && msUntil < 24 * 60 * 60 * 1000) {
-      setTimeout(() => {
-        if (Notification.permission === 'granted') {
-          const role = sched.lead.toUpperCase() === currentUser.toUpperCase() ? 'Lead' : 'Support';
-          new Notification(`${shift.label} in 30 minutes`, {
-            body: `You are assigned as ${role}`,
-            tag: `tp-${dk}-${shift.key}`,
-          });
-        }
-      }, msUntil);
-    }
+    REMINDER_OFFSETS.forEach(offset => {
+      const reminderTime = new Date(shiftDate.getTime() - offset.minutes * 60 * 1000);
+      const msUntil = reminderTime.getTime() - Date.now();
+
+      if (msUntil > 0 && msUntil < 24 * 60 * 60 * 1000) {
+        setTimeout(() => {
+          if (Notification.permission === 'granted') {
+            new Notification(`${shift.label} in ${offset.label}`, {
+              body: `You are ${role} ${partner}`.trim(),
+              tag: `tp-${dk}-${shift.key}-${offset.minutes}`,
+              icon: 'icon-192.png',
+            });
+          }
+        }, msUntil);
+      }
+    });
   });
 }
 
