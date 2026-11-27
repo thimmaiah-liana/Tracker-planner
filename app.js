@@ -11,6 +11,7 @@ const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const MEMBER_COLORS = ['#1a7a3a','#d97706','#4f46e5','#dc2626','#059669','#9333ea','#0891b2','#c2410c'];
 
 // ── State ──
+const DEFAULT_API_URL = 'https://script.google.com/macros/s/AKfycbz8YHy-ZQYlvGnejarCyJdCmrZU29eb1atynUlS1xJdRoDyQa_pxyzuA17Wy1S15DDRpg/exec';
 let apiUrl = '';
 let teamPairs = [];
 let schedules = [];
@@ -47,7 +48,7 @@ function init() {
 
 function loadLocalSettings() {
   try {
-    apiUrl = localStorage.getItem('tp_api_url') || '';
+    apiUrl = localStorage.getItem('tp_api_url') || DEFAULT_API_URL;
     currentUser = localStorage.getItem('tp_username') || '';
     const saved = localStorage.getItem('tp_shift_times');
     if (saved) shiftTimes = JSON.parse(saved);
