@@ -1,0 +1,650 @@
+// ── Tracker's Planner ──
+// Field team scheduling app backed by Google Sheets
+
+const SHIFTS = [
+  { key: 'Morning', label: 'Morning Visit', defaultTime: '06:00' },
+  { key: 'Midday', label: 'Midday Visit', defaultTime: '12:00' },
+  { key: 'Evening', label: 'Evening Visit', defaultTime: '17:00' },
+];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const MEMBER_COLORS = ['#1a7a3a','#d97706','#4f46e5','#dc2626','#059669','#9333ea','#0891b2','#c2410c'];
+
+// ── State ──
+let apiUrl = '';
+let teamPairs = [];
+let schedules = [];
+let viewYear, viewMonth;
+let currentUser = '';
+let currentPage = 'calendar';
+let shiftTimes = {};
+
+const now = new Date();
+viewYear = now.getFullYear();
+viewMonth = now.getMonth();
+
+// ── Init ──
+function init() {
+  loadLocalSettings();
+
+  if (!currentUser) {
+    showNamePrompt();
+    return;
+  }
+
+  updateUserDisplay();
+  setupNavigation();
+  setupMobileMenu();
+  setupModal();
+
+  if (apiUrl) {
+    fetchAll();
+  } else {
+    showPage('settings');
+    showToast('Set your Apps Script URL in Settings to get started');
+  }
+}
+
+function loadLocalSettings() {
+  try {
+    apiUrl = localStorage.getItem('tp_api_url') || '';
+    currentUser = localStorage.getItem('tp_username') || '';
+    const saved = localStorage.getItem('tp_shift_times');
+    if (saved) shiftTimes = JSON.parse(saved);
+  } catch (e) {}
+
+  const urlInput = document.getElementById('api-url');
+  if (urlInput && apiUrl) urlInput.value = apiUrl;
+}
+
+function showNamePrompt() {
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <section class="page" style="display:flex;align-items:center;justify-content:center;min-height:60vh">
+      <div style="text-align:center;max-width:360px">
+        <div style="font-family:var(--font-display);font-size:22px;font-weight:700;margin-bottom:8px">Welcome</div>
+        <p style="color:var(--fg-secondary);font-size:13px;margin-bottom:20px">Enter your name so we can show your assigned field visits.</p>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="name-input" class="input" placeholder="Your name" style="flex:1" autofocus>
+          <button class="btn-primary" id="name-submit">Continue</button>
+        </div>
+      </div>
+    </section>`;
+
+  const submit = () => {
+    const val = document.getElementById('name-input').value.trim();
+    if (!val) return;
+    currentUser = val;
+    try { localStorage.setItem('tp_username', currentUser); } catch (e) {}
+    window.location.reload();
+  };
+
+  document.getElementById('name-submit').addEventListener('click', submit);
+  document.getElementById('name-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') submit();
+  });
+}
+
+function updateUserDisplay() {
+  const initials = getInitials(currentUser);
+  document.getElementById('user-avatar').textContent = initials;
+  document.getElementById('user-name').textContent = currentUser;
+  document.getElementById('mobile-avatar').textContent = initials;
+}
+
+// ── Navigation ──
+function setupNavigation() {
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => showPage(btn.dataset.page));
+  });
+
+  document.getElementById('prev-month').addEventListener('click', () => {
+    viewMonth--;
+    if (viewMonth < 0) { viewMonth = 11; viewYear--; }
+    renderCalendar();
+  });
+  document.getElementById('next-month').addEventListener('click', () => {
+    viewMonth++;
+    if (viewMonth > 11) { viewMonth = 0; viewYear++; }
+    renderCalendar();
+  });
+  document.getElementById('today-btn').addEventListener('click', () => {
+    viewYear = now.getFullYear();
+    viewMonth = now.getMonth();
+    renderCalendar();
+  });
+
+  document.getElementById('add-member-btn').addEventListener('click', addMember);
+  document.getElementById('save-times-btn').addEventListener('click', saveTimes);
+  document.getElementById('save-api-btn').addEventListener('click', saveApiUrl);
+
+  document.getElementById('new-lead').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('new-support').focus();
+  });
+  document.getElementById('new-support').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addMember();
+  });
+}
+
+function setupMobileMenu() {
+  const hamburger = document.getElementById('hamburger');
+  const sidebar = document.getElementById('sidebar');
+  let overlay = document.createElement('div');
+  overlay.className = 'sidebar-overlay';
+  document.getElementById('app').appendChild(overlay);
+
+  hamburger.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('show');
+  });
+  overlay.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('show');
+  });
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+      overlay.classList.remove('show');
+    });
+  });
+}
+
+function showPage(page) {
+  currentPage = page;
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+  document.getElementById('page-' + page).style.display = 'block';
+
+  if (page === 'calendar') renderCalendar();
+  if (page === 'today') renderToday();
+  if (page === 'settings') renderSettings();
+}
+
+// ── API ──
+function saveApiUrl() {
+  const input = document.getElementById('api-url');
+  apiUrl = input.value.trim();
+  try { localStorage.setItem('tp_api_url', apiUrl); } catch (e) {}
+
+  if (apiUrl) {
+    document.getElementById('api-status').textContent = 'Testing connection...';
+    fetchAll().then(() => {
+      document.getElementById('api-status').textContent = 'Connected successfully!';
+      document.getElementById('api-status').style.color = 'var(--accent)';
+    }).catch(() => {
+      document.getElementById('api-status').textContent = 'Connection failed. Check the URL.';
+      document.getElementById('api-status').style.color = 'var(--danger)';
+    });
+  }
+}
+
+let loadingBar;
+function showLoading() {
+  if (!loadingBar) {
+    loadingBar = document.createElement('div');
+    loadingBar.className = 'loading-bar';
+    document.getElementById('app').appendChild(loadingBar);
+  }
+  loadingBar.classList.remove('done');
+  requestAnimationFrame(() => loadingBar.classList.add('active'));
+}
+function hideLoading() {
+  if (loadingBar) {
+    loadingBar.classList.remove('active');
+    loadingBar.classList.add('done');
+    setTimeout(() => loadingBar.classList.remove('done'), 300);
+  }
+}
+
+async function apiGet(action, params = {}) {
+  if (!apiUrl) return null;
+  const url = new URL(apiUrl);
+  url.searchParams.set('action', action);
+  for (const k in params) url.searchParams.set(k, params[k]);
+  const res = await fetch(url.toString());
+  return res.json();
+}
+
+async function apiPost(data) {
+  if (!apiUrl) return null;
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    body: JSON.stringify(data),
+    headers: { 'Content-Type': 'text/plain' },
+  });
+  return res.json();
+}
+
+async function fetchAll() {
+  showLoading();
+  try {
+    const [teamRes, schedRes] = await Promise.all([
+      apiGet('getTeam'),
+      apiGet('getSchedule'),
+    ]);
+
+    if (teamRes?.members) teamPairs = teamRes.members;
+    if (schedRes?.schedule) schedules = schedRes.schedule;
+
+    applyTimes();
+    render();
+    scheduleReminders();
+  } catch (e) {
+    console.error('Fetch failed:', e);
+    showToast('Failed to load data');
+  } finally {
+    hideLoading();
+  }
+}
+
+function applyTimes() {
+  const mt = document.getElementById('time-morning');
+  const md = document.getElementById('time-midday');
+  const ev = document.getElementById('time-evening');
+  if (mt && shiftTimes['Morning']) mt.value = shiftTimes['Morning'];
+  if (md && shiftTimes['Midday']) md.value = shiftTimes['Midday'];
+  if (ev && shiftTimes['Evening']) ev.value = shiftTimes['Evening'];
+}
+
+function getLeads() {
+  return [...new Set(teamPairs.map(p => p.lead).filter(Boolean))];
+}
+
+function getSupports() {
+  return [...new Set(teamPairs.map(p => p.support).filter(Boolean))];
+}
+
+// ── Render ──
+function render() {
+  if (currentPage === 'calendar') renderCalendar();
+  if (currentPage === 'today') renderToday();
+  if (currentPage === 'settings') renderSettings();
+}
+
+// ── Calendar ──
+function renderCalendar() {
+  const monthEl = document.getElementById('cal-month');
+  monthEl.textContent = MONTHS[viewMonth] + ' ' + viewYear;
+
+  const grid = document.getElementById('calendar-grid');
+  const first = new Date(viewYear, viewMonth, 1);
+  const startDay = first.getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const prevDays = new Date(viewYear, viewMonth, 0).getDate();
+  const today = new Date();
+  const todayStr = dateKey(today);
+
+  let html = '';
+  DAYS_SHORT.forEach(d => { html += `<div class="cal-head">${d}</div>`; });
+
+  const totalCells = Math.ceil((startDay + daysInMonth) / 7) * 7;
+
+  for (let i = 0; i < totalCells; i++) {
+    const dayNum = i - startDay + 1;
+    let realDate, otherMonth = false;
+
+    if (dayNum < 1) {
+      realDate = new Date(viewYear, viewMonth - 1, prevDays + dayNum);
+      otherMonth = true;
+    } else if (dayNum > daysInMonth) {
+      realDate = new Date(viewYear, viewMonth + 1, dayNum - daysInMonth);
+      otherMonth = true;
+    } else {
+      realDate = new Date(viewYear, viewMonth, dayNum);
+    }
+
+    const dk = dateKey(realDate);
+    const isToday = dk === todayStr;
+    const daySchedules = getSchedulesForDate(dk);
+
+    html += `<div class="cal-cell${otherMonth ? ' other' : ''}${isToday ? ' today' : ''}" data-date="${dk}">`;
+    html += `<div class="cal-cell-num">${realDate.getDate()}</div>`;
+
+    if (daySchedules.length > 0) {
+      html += '<div class="cal-chips">';
+      daySchedules.forEach(s => {
+        const cls = s.time.toLowerCase();
+        const lead = s.lead || '...';
+        html += `<div class="cal-chip ${cls}">${esc(lead)}</div>`;
+      });
+      html += '</div>';
+      html += '<div class="cal-dots">';
+      daySchedules.forEach(s => {
+        const cls = s.time.toLowerCase();
+        html += `<div class="cal-dot" style="background:var(--${cls})"></div>`;
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  grid.innerHTML = html;
+
+  grid.querySelectorAll('.cal-cell:not(.other)').forEach(cell => {
+    cell.addEventListener('click', () => openDayModal(cell.dataset.date));
+  });
+}
+
+// ── Today ──
+function renderToday() {
+  const dateEl = document.getElementById('today-date');
+  const content = document.getElementById('today-content');
+  const today = new Date();
+  dateEl.textContent = today.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  const dk = dateKey(today);
+  const daySchedules = getSchedulesForDate(dk);
+
+  if (daySchedules.length === 0 && teamPairs.length === 0) {
+    content.innerHTML = `<div class="empty-state">
+      <p>No visits scheduled for today.</p>
+      <p>Add team members in Settings and assign them from the Calendar.</p>
+    </div>`;
+    return;
+  }
+
+  content.innerHTML = SHIFTS.map(shift => {
+    const sched = daySchedules.find(s => s.time === shift.key);
+    const time = shiftTimes[shift.key] || shift.defaultTime;
+    const lead = sched?.lead || '';
+    const support = sched?.support || '';
+    const cls = shift.key.toLowerCase();
+
+    let yourRole = '';
+    if (lead.toUpperCase() === currentUser.toUpperCase()) yourRole = 'Lead';
+    else if (support.toUpperCase() === currentUser.toUpperCase()) yourRole = 'Support';
+
+    return `<div class="today-card">
+      <div class="today-card-header">
+        <div>
+          <div class="today-shift-name">${shift.label}</div>
+          <div class="today-shift-time">${formatTime(time)}</div>
+        </div>
+        <span class="shift-badge ${cls}">${shift.key}</span>
+      </div>
+      <div class="assign-grid">
+        <div class="assign-block">
+          <div class="assign-label">Lead</div>
+          <div class="assign-value ${lead ? '' : 'empty'}">${esc(lead) || 'Not assigned'}</div>
+        </div>
+        <div class="assign-block">
+          <div class="assign-label">Support</div>
+          <div class="assign-value ${support ? '' : 'empty'}">${esc(support) || 'Not assigned'}</div>
+        </div>
+      </div>
+      ${yourRole ? `<div class="your-role-banner">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        You are assigned as ${yourRole}
+      </div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── Settings ──
+function renderSettings() {
+  const list = document.getElementById('member-list');
+  if (!list) return;
+
+  if (teamPairs.length === 0) {
+    list.innerHTML = '<div class="empty-state">No team members yet. Add your first lead/support pair above.</div>';
+    return;
+  }
+
+  list.innerHTML = teamPairs.map((p, i) => {
+    return `<div class="member-row">
+      <div class="member-info">
+        <div class="member-initials" style="background:${MEMBER_COLORS[i % MEMBER_COLORS.length]}">${getInitials(p.lead)}</div>
+        <div class="member-details">
+          <div class="member-name">${esc(p.lead)}</div>
+          <div class="member-email">Lead</div>
+        </div>
+      </div>
+      <div class="member-info" style="margin-left:auto;margin-right:12px">
+        <div class="member-initials" style="background:${MEMBER_COLORS[(i + 4) % MEMBER_COLORS.length]}">${getInitials(p.support)}</div>
+        <div class="member-details">
+          <div class="member-name">${esc(p.support)}</div>
+          <div class="member-email">Support</div>
+        </div>
+      </div>
+      <button class="remove-btn" data-row="${p.row}" title="Remove">&times;</button>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = parseInt(btn.dataset.row);
+      await removeMember(row);
+    });
+  });
+}
+
+// ── Modal ──
+function setupModal() {
+  document.getElementById('modal-close').addEventListener('click', closeModal);
+  document.getElementById('modal-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
+}
+
+function openDayModal(dk) {
+  const overlay = document.getElementById('modal-overlay');
+  const dateEl = document.getElementById('modal-date');
+  const weekdayEl = document.getElementById('modal-weekday');
+  const body = document.getElementById('modal-body');
+
+  const [y, m, d] = dk.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  dateEl.textContent = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  weekdayEl.textContent = date.toLocaleDateString('en-US', { weekday: 'long' });
+
+  const daySchedules = getSchedulesForDate(dk);
+  const leads = getLeads();
+  const supports = getSupports();
+
+  body.innerHTML = SHIFTS.map(shift => {
+    const sched = daySchedules.find(s => s.time === shift.key);
+    const time = shiftTimes[shift.key] || shift.defaultTime;
+    const cls = shift.key.toLowerCase();
+    const currentLead = sched?.lead || '';
+    const currentSupport = sched?.support || '';
+
+    return `<div class="shift-section ${cls}">
+      <div class="shift-section-header">
+        <span class="shift-section-title" style="color:var(--${cls})">${shift.label}</span>
+        <span class="shift-section-time">${formatTime(time)}</span>
+      </div>
+      <div class="assign-row">
+        <span class="assign-row-label">Lead</span>
+        <select class="input select" data-date="${dk}" data-shift="${shift.key}" data-role="lead" style="flex:1">
+          <option value="">— Select —</option>
+          ${leads.map(name => `<option value="${esc(name)}" ${currentLead === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="assign-row">
+        <span class="assign-row-label">Support</span>
+        <select class="input select" data-date="${dk}" data-shift="${shift.key}" data-role="support" style="flex:1">
+          <option value="">— Select —</option>
+          ${supports.map(name => `<option value="${esc(name)}" ${currentSupport === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}
+        </select>
+      </div>
+    </div>`;
+  }).join('');
+
+  body.querySelectorAll('select').forEach(sel => {
+    sel.addEventListener('change', () => saveShiftAssignment(sel));
+  });
+
+  overlay.classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+
+// ── Data operations ──
+async function addMember() {
+  const leadInput = document.getElementById('new-lead');
+  const supportInput = document.getElementById('new-support');
+
+  const lead = leadInput.value.trim();
+  const support = supportInput.value.trim();
+  if (!lead && !support) { leadInput.focus(); return; }
+
+  showLoading();
+  try {
+    await apiPost({
+      action: 'addTeamMember',
+      lead,
+      support,
+    });
+    leadInput.value = '';
+    supportInput.value = '';
+    await fetchAll();
+    showToast('Team member added');
+  } catch (e) {
+    showToast('Failed to add member');
+  }
+  hideLoading();
+}
+
+async function removeMember(row) {
+  showLoading();
+  try {
+    await apiPost({ action: 'removeTeamMember', row });
+    await fetchAll();
+    showToast('Member removed');
+  } catch (e) {
+    showToast('Failed to remove member');
+  }
+  hideLoading();
+}
+
+async function saveShiftAssignment(sel) {
+  const dk = sel.dataset.date;
+  const shift = sel.dataset.shift;
+  const role = sel.dataset.role;
+
+  const otherRole = role === 'lead' ? 'support' : 'lead';
+  const otherSel = document.querySelector(`select[data-date="${dk}"][data-shift="${shift}"][data-role="${otherRole}"]`);
+
+  showLoading();
+  try {
+    await apiPost({
+      action: 'saveSchedule',
+      date: dk,
+      time: shift,
+      lead: role === 'lead' ? sel.value : (otherSel?.value || ''),
+      support: role === 'support' ? sel.value : (otherSel?.value || ''),
+    });
+    await fetchAll();
+    showToast('Schedule updated');
+  } catch (e) {
+    showToast('Failed to save');
+  }
+  hideLoading();
+}
+
+function saveTimes() {
+  shiftTimes['Morning'] = document.getElementById('time-morning').value;
+  shiftTimes['Midday'] = document.getElementById('time-midday').value;
+  shiftTimes['Evening'] = document.getElementById('time-evening').value;
+  try { localStorage.setItem('tp_shift_times', JSON.stringify(shiftTimes)); } catch (e) {}
+  showToast('Times saved');
+}
+
+// ── Notifications ──
+function scheduleReminders() {
+  if (!('Notification' in window)) return;
+
+  if (Notification.permission === 'default') {
+    document.addEventListener('click', function askOnce() {
+      Notification.requestPermission();
+      document.removeEventListener('click', askOnce);
+    }, { once: true });
+  }
+
+  const dk = dateKey(new Date());
+  const daySchedules = getSchedulesForDate(dk);
+
+  daySchedules.forEach(sched => {
+    if (sched.lead.toUpperCase() !== currentUser.toUpperCase() &&
+        sched.support.toUpperCase() !== currentUser.toUpperCase()) return;
+
+    const shift = SHIFTS.find(s => s.key === sched.time);
+    if (!shift) return;
+    const time = shiftTimes[shift.key] || shift.defaultTime;
+    const [h, m] = time.split(':').map(Number);
+    const shiftDate = new Date();
+    shiftDate.setHours(h, m, 0, 0);
+
+    const reminderTime = new Date(shiftDate.getTime() - 30 * 60 * 1000);
+    const msUntil = reminderTime.getTime() - Date.now();
+
+    if (msUntil > 0 && msUntil < 24 * 60 * 60 * 1000) {
+      setTimeout(() => {
+        if (Notification.permission === 'granted') {
+          const role = sched.lead.toUpperCase() === currentUser.toUpperCase() ? 'Lead' : 'Support';
+          new Notification(`${shift.label} in 30 minutes`, {
+            body: `You are assigned as ${role}`,
+            tag: `tp-${dk}-${shift.key}`,
+          });
+        }
+      }, msUntil);
+    }
+  });
+}
+
+// ── Helpers ──
+function getSchedulesForDate(dk) {
+  return schedules.filter(s => {
+    const sDate = s.date instanceof Date ? dateKey(s.date) : normalizeDate(s.date);
+    return sDate === dk;
+  });
+}
+
+function normalizeDate(str) {
+  if (!str) return '';
+  try {
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return str;
+    return dateKey(d);
+  } catch (e) { return str; }
+}
+
+function dateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function formatTime(t) {
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ── Go ──
+init();
