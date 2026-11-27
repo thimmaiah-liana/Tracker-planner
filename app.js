@@ -170,7 +170,15 @@ let backCount = 0;
 let backTimer = null;
 
 window.addEventListener('popstate', (e) => {
-  if (e.state?.page) {
+  // If modal is open, close it
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay && overlay.classList.contains('open') && !e.state?.modal) {
+    closeModal(true);
+    backCount = 0;
+    return;
+  }
+
+  if (e.state?.page && !e.state?.modal) {
     pageHistory.pop();
     showPage(e.state.page, false);
     backCount = 0;
@@ -532,10 +540,14 @@ function openDayModal(dk) {
   });
 
   overlay.classList.add('open');
+  history.pushState({ modal: true, page: currentPage }, '', '#modal');
 }
 
-function closeModal() {
-  document.getElementById('modal-overlay').classList.remove('open');
+function closeModal(fromPopstate) {
+  const overlay = document.getElementById('modal-overlay');
+  if (!overlay.classList.contains('open')) return;
+  overlay.classList.remove('open');
+  if (!fromPopstate) history.back();
 }
 
 // ── Data operations ──
