@@ -737,5 +737,10 @@ function showToast(msg) {
   toast._timeout = setTimeout(() => toast.classList.remove('show'), 2500);
 }
 
+// ── Service Worker ──
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
 // ── Go ──
 init();
