@@ -168,40 +168,42 @@ function showPage(page, pushState = true) {
 
 let backCount = 0;
 let backTimer = null;
+let modalOpen = false;
 
 window.addEventListener('popstate', (e) => {
-  // If modal is open, close it
-  const overlay = document.getElementById('modal-overlay');
-  if (overlay && overlay.classList.contains('open') && !e.state?.modal) {
+  // Modal is open — close it, stay on current page
+  if (modalOpen) {
     closeModal(true);
-    backCount = 0;
     return;
   }
 
-  if (e.state?.page && !e.state?.modal) {
+  // Navigating back to a known page
+  if (e.state?.page) {
     pageHistory.pop();
     showPage(e.state.page, false);
     backCount = 0;
     return;
   }
 
-  if (pageHistory.length > 1) {
+  // On the first page — double-back to exit
+  if (pageHistory.length <= 1) {
+    backCount++;
+    if (backCount >= 2) {
+      window.close();
+      history.back();
+      return;
+    }
+    // Re-push so back can be pressed again
+    history.pushState({ page: currentPage }, '', '#' + currentPage);
+    showToast('Press back again to exit');
+    clearTimeout(backTimer);
+    backTimer = setTimeout(() => { backCount = 0; }, 2000);
+  } else {
     pageHistory.pop();
     const prev = pageHistory[pageHistory.length - 1];
     showPage(prev, false);
     history.pushState({ page: prev }, '', '#' + prev);
     backCount = 0;
-  } else {
-    backCount++;
-    if (backCount >= 2) {
-      window.close();
-      history.back();
-    } else {
-      history.pushState({ page: currentPage }, '', '#' + currentPage);
-      showToast('Press back again to exit');
-      clearTimeout(backTimer);
-      backTimer = setTimeout(() => { backCount = 0; }, 2000);
-    }
   }
 });
 
@@ -540,6 +542,7 @@ function openDayModal(dk) {
   });
 
   overlay.classList.add('open');
+  modalOpen = true;
   history.pushState({ modal: true, page: currentPage }, '', '#modal');
 }
 
@@ -547,6 +550,7 @@ function closeModal(fromPopstate) {
   const overlay = document.getElementById('modal-overlay');
   if (!overlay.classList.contains('open')) return;
   overlay.classList.remove('open');
+  modalOpen = false;
   if (!fromPopstate) history.back();
 }
 
