@@ -597,37 +597,22 @@ async function removePersonByName(name, role) {
 }
 
 async function saveShiftAssignment(sel) {
-  const dk = sel.dataset.date;
-  const shift = sel.dataset.shift;
-
-  const supportContainer = document.querySelector(`.support-checks[data-date="${dk}"][data-shift="${shift}"]`);
-  const checkedSupports = supportContainer
-    ? [...supportContainer.querySelectorAll('input:checked')].map(cb => cb.value).join(', ')
-    : '';
-
-  showLoading();
-  try {
-    await apiPost({
-      action: 'saveSchedule',
-      date: dk,
-      time: shift,
-      lead: sel.value,
-      support: checkedSupports,
-    });
-    await fetchAll();
-    showToast('Schedule updated');
-  } catch (e) {
-    showToast('Failed to save');
-  }
-  hideLoading();
+  saveFullShift(sel.dataset.date, sel.dataset.shift);
 }
 
 async function saveSupportAssignment(container) {
-  const dk = container.dataset.date;
-  const shift = container.dataset.shift;
+  saveFullShift(container.dataset.date, container.dataset.shift);
+}
 
+async function saveFullShift(dk, shift) {
   const leadSel = document.querySelector(`select[data-date="${dk}"][data-shift="${shift}"][data-role="lead"]`);
-  const checkedSupports = [...container.querySelectorAll('input:checked')].map(cb => cb.value).join(', ');
+  const supportContainer = document.querySelector(`.support-checks[data-date="${dk}"][data-shift="${shift}"]`);
+  const lead = leadSel?.value || '';
+  const support = supportContainer
+    ? [...supportContainer.querySelectorAll('input:checked')].map(cb => cb.value).join(', ')
+    : '';
+
+  if (!lead && !support) return;
 
   showLoading();
   try {
@@ -635,8 +620,8 @@ async function saveSupportAssignment(container) {
       action: 'saveSchedule',
       date: dk,
       time: shift,
-      lead: leadSel?.value || '',
-      support: checkedSupports,
+      lead,
+      support,
     });
     await fetchAll();
     showToast('Schedule updated');

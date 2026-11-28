@@ -189,8 +189,9 @@ function saveSchedule(data) {
 
   var matchingRows = [];
   for (var i = 1; i < allData.length; i++) {
-    var rowDate = allData[i][0] instanceof Date ? formatDate(allData[i][0]) : (allData[i][0] || '').toString();
-    if (rowDate === data.date && allData[i][1] === data.time) {
+    var rowDate = allData[i][0] instanceof Date ? formatDate(allData[i][0]) : (allData[i][0] || '').toString().trim();
+    var rowTime = (allData[i][1] || '').toString().trim();
+    if (rowDate === data.date && rowTime === data.time) {
       matchingRows.push(i + 1);
     }
   }
