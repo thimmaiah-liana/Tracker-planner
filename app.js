@@ -660,18 +660,18 @@ const REMINDER_OFFSETS = [
   { minutes: 30, label: '30 minutes' },
 ];
 
-function scheduleReminders() {
+async function scheduleReminders() {
   if (!('Notification' in window)) return;
 
   if (Notification.permission === 'default') {
-    document.addEventListener('click', function askOnce() {
-      Notification.requestPermission();
-      document.removeEventListener('click', askOnce);
-    }, { once: true });
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
   }
+  if (Notification.permission !== 'granted') return;
 
   const dk = dateKey(new Date());
   const daySchedules = getSchedulesForDate(dk);
+  const reminders = [];
 
   daySchedules.forEach(sched => {
     const supList = sched.support ? sched.support.split(',').map(x => x.trim()) : [];
@@ -693,22 +693,30 @@ function scheduleReminders() {
       : 'with ' + sched.lead;
 
     REMINDER_OFFSETS.forEach(offset => {
-      const reminderTime = new Date(shiftDate.getTime() - offset.minutes * 60 * 1000);
-      const msUntil = reminderTime.getTime() - Date.now();
-
-      if (msUntil > 0 && msUntil < 24 * 60 * 60 * 1000) {
-        setTimeout(() => {
-          if (Notification.permission === 'granted') {
-            new Notification(`${shift.label} in ${offset.label}`, {
-              body: `You are ${role} ${partner}`.trim(),
-              tag: `tp-${dk}-${shift.key}-${offset.minutes}`,
-              icon: 'icon-192.png',
-            });
-          }
-        }, msUntil);
+      const fireAt = shiftDate.getTime() - offset.minutes * 60 * 1000;
+      if (fireAt > Date.now()) {
+        reminders.push({
+          fireAt,
+          title: `${shift.label} in ${offset.label}`,
+          body: `You are ${role} ${partner}`.trim(),
+          tag: `tp-${dk}-${shift.key}-${offset.minutes}`,
+        });
       }
     });
   });
+
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SET_REMINDERS',
+      reminders,
+    });
+  }
+
+  if ('periodicSync' in registration) {
+    try {
+      await registration.periodicSync.register('check-reminders', { minInterval: 60 * 1000 });
+    } catch (_) {}
+  }
 }
 
 // ── Helpers ──
@@ -787,8 +795,11 @@ function showToast(msg) {
 }
 
 // ── Service Worker ──
+let registration = null;
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    registration = reg;
+  }).catch(() => {});
 }
 
 // ── Go ──
