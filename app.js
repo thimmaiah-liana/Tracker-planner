@@ -48,7 +48,7 @@ function init() {
 function loadLocalSettings() {
   try {
     apiUrl = DEFAULT_API_URL;
-    currentUser = localStorage.getItem('tp_username') || '';
+    currentUser = localStorage.getItem('tp_username') || localStorage.getItem('tp_user') || '';
     const saved = localStorage.getItem('tp_shift_times');
     if (saved) shiftTimes = JSON.parse(saved);
   } catch (e) {}
@@ -106,8 +106,9 @@ function setupNavigation() {
     renderCalendar();
   });
   document.getElementById('today-btn').addEventListener('click', () => {
-    viewYear = now.getFullYear();
-    viewMonth = now.getMonth();
+    const today = new Date();
+    viewYear = today.getFullYear();
+    viewMonth = today.getMonth();
     renderCalendar();
   });
 
@@ -612,8 +613,6 @@ async function saveFullShift(dk, shift) {
     ? [...supportContainer.querySelectorAll('input:checked')].map(cb => cb.value).join(', ')
     : '';
 
-  if (!lead && !support) return;
-
   showLoading();
   try {
     await apiPost({
@@ -623,7 +622,15 @@ async function saveFullShift(dk, shift) {
       lead,
       support,
     });
-    await fetchAll();
+    const idx = schedules.findIndex(s => {
+      const sDate = s.date instanceof Date ? dateKey(s.date) : normalizeDate(s.date);
+      return sDate === dk && s.time === shift;
+    });
+    if (idx >= 0) {
+      schedules[idx] = { ...schedules[idx], lead, support };
+    } else {
+      schedules.push({ date: dk, time: shift, lead, support });
+    }
     showToast('Schedule updated');
   } catch (e) {
     showToast('Failed to save');
@@ -645,15 +652,24 @@ const REMINDER_OFFSETS = [
   { minutes: 30, label: '30 minutes' },
 ];
 
-async function scheduleReminders() {
+function scheduleReminders() {
   if (!('Notification' in window)) return;
+  if (Notification.permission === 'denied') return;
 
   if (Notification.permission === 'default') {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
+    document.addEventListener('click', function askPerm() {
+      Notification.requestPermission().then(p => {
+        if (p === 'granted') sendRemindersToSW();
+      });
+      document.removeEventListener('click', askPerm);
+    }, { once: true });
+    return;
   }
-  if (Notification.permission !== 'granted') return;
 
+  sendRemindersToSW();
+}
+
+function sendRemindersToSW() {
   const dk = dateKey(new Date());
   const daySchedules = getSchedulesForDate(dk);
   const reminders = [];
@@ -661,7 +677,7 @@ async function scheduleReminders() {
   daySchedules.forEach(sched => {
     const supList = sched.support ? sched.support.split(',').map(x => x.trim()) : [];
     const userUpper = currentUser.toUpperCase();
-    const isLead = sched.lead.toUpperCase() === userUpper;
+    const isLead = sched.lead?.toUpperCase() === userUpper;
     const isSupport = supList.some(n => n.toUpperCase() === userUpper);
     if (!isLead && !isSupport) return;
 
@@ -697,9 +713,9 @@ async function scheduleReminders() {
     });
   }
 
-  if ('periodicSync' in registration) {
+  if (registration && 'periodicSync' in registration) {
     try {
-      await registration.periodicSync.register('check-reminders', { minInterval: 60 * 1000 });
+      registration.periodicSync.register('check-reminders', { minInterval: 60 * 1000 }).catch(() => {});
     } catch (_) {}
   }
 }
