@@ -19,7 +19,7 @@ let supportsList = [];
 let schedules = [];
 let viewYear, viewMonth;
 let currentUser = '';
-let currentPage = 'calendar';
+let currentPage = 'today';
 let shiftTimes = {};
 
 const now = new Date();
@@ -40,7 +40,8 @@ function init() {
   setupMobileMenu();
   setupModal();
 
-  history.replaceState({ page: 'calendar' }, '', '#calendar');
+  showPage('today', false);
+  history.replaceState({ page: 'today' }, '', '#today');
 
   fetchAll();
 }
@@ -147,7 +148,7 @@ function setupMobileMenu() {
   });
 }
 
-let pageHistory = ['calendar'];
+let pageHistory = ['today'];
 
 function showPage(page, pushState = true) {
   currentPage = page;
