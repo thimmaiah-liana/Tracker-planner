@@ -534,17 +534,9 @@ function openDayModal(dk) {
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + `<button class="btn-primary" id="save-schedule-btn" style="margin-top:16px;width:100%;padding:14px;font-size:15px">Save</button>`;
 
-  body.querySelectorAll('select[data-role="lead"]').forEach(sel => {
-    sel.addEventListener('change', () => saveShiftAssignment(sel));
-  });
-  body.querySelectorAll('.support-checks input[type="checkbox"]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const container = cb.closest('.support-checks');
-      saveSupportAssignment(container);
-    });
-  });
+  document.getElementById('save-schedule-btn').addEventListener('click', () => saveAllShifts(dk));
 
   overlay.classList.add('open');
   modalOpen = true;
@@ -601,12 +593,18 @@ async function removePersonByName(name, role) {
   hideLoading();
 }
 
-async function saveShiftAssignment(sel) {
-  saveFullShift(sel.dataset.date, sel.dataset.shift);
-}
-
-async function saveSupportAssignment(container) {
-  saveFullShift(container.dataset.date, container.dataset.shift);
+async function saveAllShifts(dk) {
+  showLoading();
+  try {
+    for (const shift of SHIFTS) {
+      await saveFullShift(dk, shift.key);
+    }
+    showToast('Schedule saved');
+    if (currentPage === 'today') renderToday();
+  } catch (e) {
+    showToast('Failed to save');
+  }
+  hideLoading();
 }
 
 async function saveFullShift(dk, shift) {
@@ -617,29 +615,22 @@ async function saveFullShift(dk, shift) {
     ? [...supportContainer.querySelectorAll('input:checked')].map(cb => cb.value).join(', ')
     : '';
 
-  showLoading();
-  try {
-    await apiPost({
-      action: 'saveSchedule',
-      date: dk,
-      time: shift,
-      lead,
-      support,
-    });
-    const idx = schedules.findIndex(s => {
-      const sDate = s.date instanceof Date ? dateKey(s.date) : normalizeDate(s.date);
-      return sDate === dk && s.time === shift;
-    });
-    if (idx >= 0) {
-      schedules[idx] = { ...schedules[idx], lead, support };
-    } else {
-      schedules.push({ date: dk, time: shift, lead, support });
-    }
-    showToast('Schedule updated');
-  } catch (e) {
-    showToast('Failed to save');
+  await apiPost({
+    action: 'saveSchedule',
+    date: dk,
+    time: shift,
+    lead,
+    support,
+  });
+  const idx = schedules.findIndex(s => {
+    const sDate = s.date instanceof Date ? dateKey(s.date) : normalizeDate(s.date);
+    return sDate === dk && s.time === shift;
+  });
+  if (idx >= 0) {
+    schedules[idx] = { ...schedules[idx], lead, support };
+  } else {
+    schedules.push({ date: dk, time: shift, lead, support });
   }
-  hideLoading();
 }
 
 function saveTimes() {
