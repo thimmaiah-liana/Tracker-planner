@@ -42,6 +42,7 @@ function init() {
 
   showPage('today', false);
   history.replaceState({ page: 'today' }, '', '#today');
+  initDone = true;
 
   fetchAll();
 }
@@ -171,8 +172,10 @@ function showPage(page, pushState = true) {
 let backCount = 0;
 let backTimer = null;
 let modalOpen = false;
+let initDone = false;
 
 window.addEventListener('popstate', (e) => {
+  if (!initDone) return;
   // Modal is open — close it, stay on current page
   if (modalOpen) {
     closeModal(true);
