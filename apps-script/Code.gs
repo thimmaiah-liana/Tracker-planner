@@ -150,6 +150,7 @@ function removePersonByName(role, name) {
 
 function getSchedule(month, year) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
+  const tz = ss.getSpreadsheetTimeZone();
   const sheet = ss.getSheetByName('SCHEDULE');
   const data = sheet.getDataRange().getValues();
   const schedule = [];
@@ -157,7 +158,7 @@ function getSchedule(month, year) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][0]) {
       const dateVal = data[i][0];
-      const dateStr = (dateVal instanceof Date) ? formatDate(dateVal) : dateVal.toString();
+      const dateStr = (dateVal instanceof Date) ? Utilities.formatDate(dateVal, tz, 'yyyy-MM-dd') : dateVal.toString();
       schedule.push({
         row: i + 1,
         date: dateStr,
@@ -184,12 +185,15 @@ function getSchedule(month, year) {
 
 function saveSchedule(data) {
   const ss = SpreadsheetApp.openById(SHEET_ID);
+  const tz = ss.getSpreadsheetTimeZone();
   const sheet = ss.getSheetByName('SCHEDULE');
   const allData = sheet.getDataRange().getValues();
 
   var matchingRows = [];
   for (var i = 1; i < allData.length; i++) {
-    var rowDate = allData[i][0] instanceof Date ? formatDate(allData[i][0]) : (allData[i][0] || '').toString().trim();
+    var rowDate = allData[i][0] instanceof Date
+      ? Utilities.formatDate(allData[i][0], tz, 'yyyy-MM-dd')
+      : (allData[i][0] || '').toString().trim();
     var rowTime = (allData[i][1] || '').toString().trim();
     if (rowDate === data.date && rowTime === data.time) {
       matchingRows.push(i + 1);

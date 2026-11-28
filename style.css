@@ -547,6 +547,46 @@ body {
   gap: 6px;
 }
 
+/* ── Today inline editing ── */
+.today-inline-select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition);
+  appearance: auto;
+}
+.today-inline-select:focus { border-color: var(--accent); }
+.today-support-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.today-check-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.today-check-label:hover { background: var(--bg-hover); }
+.today-check-label input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
 /* ── Modal ── */
 .modal-overlay {
   display: none;

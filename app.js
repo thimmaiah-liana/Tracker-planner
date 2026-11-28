@@ -395,6 +395,9 @@ function renderToday() {
     return;
   }
 
+  const leads = getLeads();
+  const supports = getSupports();
+
   content.innerHTML = SHIFTS.map(shift => {
     const sched = daySchedules.find(s => s.time === shift.key);
     const time = shiftTimes[shift.key] || shift.defaultTime;
@@ -419,11 +422,19 @@ function renderToday() {
       <div class="assign-grid">
         <div class="assign-block">
           <div class="assign-label">Lead</div>
-          <div class="assign-value ${lead ? '' : 'empty'}">${esc(lead) || 'Not assigned'}</div>
+          <select class="today-inline-select" data-date="${dk}" data-shift="${shift.key}" data-role="lead">
+            <option value="">Not assigned</option>
+            ${leads.map(name => `<option value="${esc(name)}" ${lead === name ? 'selected' : ''}>${esc(name)}</option>`).join('')}
+          </select>
         </div>
         <div class="assign-block">
           <div class="assign-label">Support</div>
-          <div class="assign-value ${support ? '' : 'empty'}">${supportNames.length ? supportNames.map(n => esc(n)).join(', ') : 'Not assigned'}</div>
+          <div class="today-support-checks" data-date="${dk}" data-shift="${shift.key}">
+            ${supports.map(name => `<label class="today-check-label">
+              <input type="checkbox" value="${esc(name)}" ${supportNames.includes(name) ? 'checked' : ''}>
+              <span>${esc(name)}</span>
+            </label>`).join('')}
+          </div>
         </div>
       </div>
       ${yourRole ? `<div class="your-role-banner">
@@ -432,6 +443,16 @@ function renderToday() {
       </div>` : ''}
     </div>`;
   }).join('');
+
+  content.querySelectorAll('.today-inline-select').forEach(sel => {
+    sel.addEventListener('change', () => saveTodayShift(sel.dataset.date, sel.dataset.shift));
+  });
+  content.querySelectorAll('.today-support-checks input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const container = cb.closest('.today-support-checks');
+      saveTodayShift(container.dataset.date, container.dataset.shift);
+    });
+  });
 }
 
 // ── Settings ──
@@ -631,6 +652,34 @@ async function saveFullShift(dk, shift) {
   } else {
     schedules.push({ date: dk, time: shift, lead, support });
   }
+}
+
+async function saveTodayShift(dk, shift) {
+  const leadSel = document.querySelector(`.today-inline-select[data-date="${dk}"][data-shift="${shift}"]`);
+  const supportContainer = document.querySelector(`.today-support-checks[data-date="${dk}"][data-shift="${shift}"]`);
+  const lead = leadSel?.value || '';
+  const support = supportContainer
+    ? [...supportContainer.querySelectorAll('input:checked')].map(cb => cb.value).join(', ')
+    : '';
+
+  showLoading();
+  try {
+    await apiPost({ action: 'saveSchedule', date: dk, time: shift, lead, support });
+    const idx = schedules.findIndex(s => {
+      const sDate = s.date instanceof Date ? dateKey(s.date) : normalizeDate(s.date);
+      return sDate === dk && s.time === shift;
+    });
+    if (idx >= 0) {
+      schedules[idx] = { ...schedules[idx], lead, support };
+    } else {
+      schedules.push({ date: dk, time: shift, lead, support });
+    }
+    showToast('Saved');
+    renderToday();
+  } catch (e) {
+    showToast('Failed to save');
+  }
+  hideLoading();
 }
 
 function saveTimes() {
